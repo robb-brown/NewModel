@@ -542,7 +542,7 @@ class ModelData(object):
 				sval = dict([(k.replace('-','_'),v) for k,v in self.samples[sample].items()])
 				locs = sval
 				if variables: locs.update(variables)
-				if variables in instruction: locs.update(instruction.get('variables',{}))
+				if 'variables' in instruction: locs.update(instruction.get('variables',{}))
 				try:
 					result = eval(instruction['criteria'],locs,globals())
 				except:
@@ -650,7 +650,10 @@ class ModelData(object):
 					else:
 						data[k] = numpy.array(data[k])
 
-					if type == u''.__class__:
+					if type == str:
+						data[k][numpy.equal(data[k],None)] = robjects.NA_Character
+						data[k] = robjects.StrVector(data[k])						
+					elif type == u''.__class__:
 						data[k][numpy.equal(data[k],None)] == robjects.NA_Character
 						data[k] = robjects.StrVector([i.encode('ascii','ignore') if i is not None else None for i in data[k]])
 					elif type in [''.__class__,u''.__class__,numpy.array(['',''])[0].__class__,numpy.array([u'',u''])[0].__class__]:

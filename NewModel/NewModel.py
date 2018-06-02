@@ -805,29 +805,29 @@ class MixedModel(LinearModel):
 		X = self.makeModelMatrix(estimateDataT)
 		B = r.fixef(self.model); Bnames = list(B.names); B2 = list(B);
 		pp = self.model.do_slot('pp')		# Need to do this separately because R is stupid
-		Z = numpy.array(R['as.matrix'](pp.slots['.xData']['Zt']))#self.model.do_slot('Zt')		
+		Z = numpy.array(R['as.matrix'](pp.slots['.xData']['Zt']))
 		Y = numpy.dot(numpy.array(X),numpy.array(B))
 		
 		u = pandas.DataFrame(rToDict(r.ranef(self.model)))
+		individuals = rToDict(R['as.matrix'](pp.slots['.xData']['Zt']).rownames)
 
 		
-		# ROBB FIX LATER 
-		if 0:
-			# Calculation of random effects
-			# Add in the random effects
-			if not excludeRandomEffects == 'all':
-				for s,sample in enumerate(estimateDataT.samples):
-					# Find the random effects
-					for groupName in u.columns:
-						exclude = excludeRandomEffects.get(groupName,[])
-						for effectName in u[groupName].index:
-							if effectName in exclude:
-								continue
-						
-							individual = individuals.index(sample[groupName])
-							effectValue = 1 if effectName == '(Intercept)' else sample[effectName]
-							adjustment = effectValue * effect[individual]
-							Y[s] += adjustment
+		# ROBB FIX LATER
+		# Calculation of random effects
+		# Add in the random effects
+		if not excludeRandomEffects == 'all':
+			for s,sample in enumerate(estimateDataT.samples):
+				# Find the random effects
+				for groupName in u.columns:
+					exclude = excludeRandomEffects.get(groupName,[])
+					for effectName in u[groupName].index:
+						if effectName in exclude:
+							continue
+					
+						individual = individuals.index(sample[groupName])
+						effectValue = 1 if effectName == '(Intercept)' else sample[effectName]
+						adjustment = effectValue * u[groupName][effectName][individual]
+						Y[s] += adjustment
 
 		primaryKeys = primaryKeys if primaryKeys is not None else list(atomicTerms.union(randomTerms))
 		residuals = numpy.array(r.resid(self.model))
@@ -886,7 +886,7 @@ class MixedModel(LinearModel):
 
 		# Make a copy of the estimateData and calculate derived values based on what was done to the real data
 		estimateDataT = copy.deepcopy(estimateData)
-		newDerived = []; keysToSet = groupValues.keys() + fixedValues.keys()
+		newDerived = []; keysToSet = list(groupValues.keys()) + list(fixedValues.keys())
 		for d in self.data.derivedValues:
 			if not d['key'] in keysToSet:
 				newDerived.append(d)
@@ -972,7 +972,7 @@ class MixedModel(LinearModel):
 		for i,n in enumerate(X.colnames):
 			if not Bnames[i] == n:
 				if not self.quiet:
-					print("Mismatch in level references (%s, %s)!" % (B.names[i],n))
+					print("Mismatch in level references (%s, %s)!" % (Bnames[i],n))
 				return None
 
 		# Calculate the estimates based on the X and B
@@ -987,7 +987,7 @@ class MixedModel(LinearModel):
 		variances = numpy.diag(numpy.dot(numpy.dot(X,V),numpy.array(X).T))# + Vr
 		stds = numpy.sqrt(variances)
 		try:
-			ddf = min([i['dDF'] for i in self.coefficients.values() if i.has_key('dDF')])
+			ddf = self.coefficients.df.min()
 			CIs = stds * scipy.stats.t(ddf).ppf(0.975)
 		except:
 			CIs = None
@@ -996,7 +996,7 @@ class MixedModel(LinearModel):
 		samples = estimateDataT.samples
 		for s,sample in enumerate(samples):
 			sample[y] = Y[s]
-			if not CIs == None:
+			if not CIs is None:
 				sample['_CI'] = CIs[s]
 			else:
 				sample['_CI'] = None
@@ -1273,15 +1273,14 @@ class NegativeBinomialMixedModel(GeneralizedMixedModel):
 		Appears not to be implemented in my version of LME4.  Have to get on the latest version...."""
 
 	def __init__(self,data=None,modelSpec=None,nullModelSpec=None,weights=None,REML=True,mcmc=None,title=None,quiet=False):
-		self.family = family
 		super(GeneralizedMixedModel,self).__init__(data=data,modelSpec=modelSpec,nullModelSpec=nullModelSpec,weights=weights,REML=REML,mcmc=mcmc,title=title,quiet=quiet,family='negative binomial')
 
 
 	def fitModel(self,modelSpec,nullModelSpec=None,weights=None,REML=True,**args):
 		if weights:
-			model = lme.glmer(self.modelSpec,family=self.family,weights=weights,REML=REML,model=True,x=True)
+			model = lme.glmer_nb(data=self.data.getRData(),formula=self.modelSpec,weights=weights,REML=REML,model=True,x=True)
 		else:
-			model = lme.glmer(self.modelSpec,family=self.family,REML=REML,model=True,x=True)
+			model = lme.glmer_nb(self.modelSpec,family=self.family,REML=REML,model=True,x=True)
 
 		if nullModelSpec is not None:
 			if weights:
