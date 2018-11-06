@@ -19,10 +19,10 @@ except:
 class ModelPlotter(object):
 	
 	def __init__(self,data=None,model=None,x=None,y=None,weights=None,groups=[],specialGroups=[],silentGroups=[],
-					individuals=[],mean=True,plotIndividuals=True,span=0.6,ialpha=None,malpha=1.0,cialpha=None,meanStyle=None,
+					individuals=[],mean=True,plotIndividuals=True,span=0.6,ialpha=None,malpha=1.0,cialpha=None,meanStyle=None,errorBars='95',
 					estimateData=None,binFunction=None,iLinewidth=1,mLinewidth=1,linestyle='-',
 					colors=None,styles=None,derivedValues=None,groupValues={},fixedValues={},xUnitConversion=None,
-					yUnitConversion=None, drawLegend=True,groupOrdering=None,**args):
+					yUnitConversion=None, drawLegend=True,groupOrdering=None,includeN=True,**args):
 		self.model = model
 		if self.model:
 			self.data = self.model.data
@@ -36,6 +36,7 @@ class ModelPlotter(object):
 			self.data = data
 		if meanStyle:
 			self.meanStyle = meanStyle
+		self.errorBars = errorBars
 		self.x = x
 		self.y = y
 		self.weights = weights
@@ -56,6 +57,7 @@ class ModelPlotter(object):
 		self.markerAlpha = args.get('markerAlpha',0.5)
 		
 		self.label = args.get('label',None)
+		self.includeN = includeN
 		
 		self.groupColorKey = {}
 		self.groupStyleKey = {}
@@ -260,7 +262,10 @@ class ModelPlotter(object):
 			else:
 				color,style = self.getColorAndStyle(i)
 			try:
-				label = self.label if self.label is not None else group + ' N=%d' % self.groupedData[group]['N']
+				groupLabel = group
+				if self.includeN:
+					groupLabel += ' N=%d' % self.groupedData[group]['N']
+				label = self.label if self.label is not None else groupLabel
 			except:
 				label = group
 			xs = i[x]; ys = i[y]
@@ -409,7 +414,9 @@ class ModelPlotter(object):
 							pred = eval('x ' + self.yUnitConversion,{'x':numpy.array(pred)},globals())						
 							ci = eval('x ' + self.yUnitConversion,{'x':numpy.array(ci)},globals())						
 						
-						label = group + ' N=%d' % self.groupedData[group]['N']
+						label = group;
+						if self.includeN:
+							label += ' N=%d' % self.groupedData[group]['N']
 						pylab.plot(xs,pred,color=self.groupFormatKey[group]['color'],alpha=self.malpha,label=label,linewidth=self.mLinewidth,linestyle=self.groupFormatKey[group]['style'])
 						pylab.fill_between(xs,pred-ci,pred+ci,color=self.groupFormatKey[group]['color'],alpha=self.cialpha)
 						self.loess[group] = loess
@@ -439,10 +446,15 @@ class ModelPlotter(object):
 						vals = numpy.ma.masked_invalid(y[numpy.where(binnedX==i)[0]])
 						newX.append(i)
 						newY.append(numpy.ma.average(vals))
-						ci.append(numpy.ma.std(vals)/numpy.ma.sqrt(numpy.ma.count(vals))*1.96)
+						if self.errorBars == '95':
+							ci.append(numpy.ma.std(vals)/numpy.ma.sqrt(numpy.ma.count(vals))*1.96)
+						elif self.errorBars == 'sd':
+							ci.append(numpy.ma.std(vals))
 						N.append(numpy.ma.count(vals))
 					newY = numpy.array(newY); ci = numpy.array(ci)
-					label = group + ' N=%d' % self.groupedData[group]['N']
+					label = group 
+					if self.includeN:
+						label += ' N=%d' % self.groupedData[group]['N']
 
 					if self.xUnitConversion:
 						newX = eval('x ' + self.xUnitConversion,{'x':numpy.array(newX)},globals())
