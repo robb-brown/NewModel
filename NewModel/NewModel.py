@@ -1,5 +1,6 @@
 from __future__ import print_function
 import numpy
+import rpy2
 import rpy2.robjects as robjects
 import rpy2.rinterface as rinterface
 from rpy2.robjects.packages import importr
@@ -53,33 +54,33 @@ def convertVal(val):
 def rToDict(data):
 	try:
 		named = not (data.names == rinterface.NULL or numpy.all(numpy.array(data.names) == rinterface.NULL))
-	except (rinterface.RRuntimeError):
-		return None
+#	except (rpy2.rinterface_lib.embedded.RRuntimeError):
+#		return None
 	except:
 		named = None
-	rDictTypes = [ DataFrame]
-	rArrayTypes = [FloatVector,IntVector,Vector]
-	rListTypes=[ListVector,StrVector]
-	rMatrixTypes = [Matrix]
-	
+	rDictTypes = (DataFrame)
+	rArrayTypes = (FloatVector,IntVector,Vector)
+	rListTypes=(ListVector,StrVector)
+	rMatrixTypes = (Matrix)
+
 	kind = None
-	if type(data) in rMatrixTypes:
+	if isinstance(data,rMatrixTypes):
 		kind = 'matrix'
 	elif hasattr(data,'slotnames') and 'Dim' in list(data.slotnames()) and len(list(data.do_slot('Dim')))>1:
 		kind = 'matrixObject'
-	elif type(data) in rDictTypes or named:
+	elif isinstance(data,rDictTypes) or named:
 		kind = 'dict'
-	elif type(data) in rListTypes:
+	elif isinstance(data,rListTypes):
 		kind = 'list'
-	elif type(data) in rArrayTypes:
+	elif isinstance(data,rArrayTypes):
 		kind = 'array'
-	elif type(data) == FactorVector:
+	elif isinstance(data,FactorVector):
 		kind = 'factorVector'
 	try:
 		if kind == 'dict':
 			sub = [rToDict(elt) for elt in data]
 			if not data.names == rinterface.NULL:
-				return OrderedDict(zip(data.names, sub))
+				return OrderedDict(zip(list(data.names), sub))
 			else:
 				return OrderedDict()
 		elif kind == 'list':
@@ -188,6 +189,13 @@ class LinearModel(object):
 		self.title = title
 		self.setData(data)
 		self.quiet = quiet
+		
+	def __repr__(self):
+		return self.summaryText()
+	
+	@property
+	def AIC(self):
+		return (self.R.AIC(self.model)[0])
 
 
 	def makeNullModelSpec(self):
@@ -241,8 +249,44 @@ class LinearModel(object):
 			traceback.print_exc()
 		self.ModelData = rToDict(self.model)
 		self.summary = rToDict(self.R.summary(self.model))
-		self.coefficients = self.summary['coefficients']
+		self.coefficients = pandas.DataFrame(self.summary['coefficients']).transpose()
+		self.coefficients = self.coefficients.reset_index().rename(columns=dict(index='Effect')).set_index('Effect')
+
 		self.R['rm']("data")
+		
+		# Calculate model terms for use by other methods
+		terms = list(self.R.terms(self.R.formula(self.modelSpec)).do_slot('term.labels'))
+		fixed = [t for t in terms if t.find('|') < 0]
+		atomicTerms = [t.split(':') for t in fixed]
+		atomicTerms = set([item for sublist in atomicTerms for item in sublist])
+		formula = self.R.formula('~ ' + '+'.join(fixed))
+		y = self.modelSpec.split('~')[0].strip()
+		
+		self.terms = terms
+		self.atomicTerms = atomicTerms
+		self.formula = formula
+		self.y = y
+
+
+	def removeBadSamples(self,data):
+		toRemove = []
+		terms = list(self.atomicTerms) + [self.y]
+		terms = [r.replace('.','-') for r in terms if not r == '1']
+		for s,sample in enumerate(data.samples):
+			for t,term in enumerate(terms):
+				try:
+					if numpy.isnan(sample[term]):
+						toRemove.append(sample)
+						break
+				except:
+					pass
+
+				if sample[term] in [None,'na','nan','None'] or sample.__class__ == numpy.ma.masked.__class__:
+					toRemove.append(sample)
+					break
+		for s in toRemove:
+			data.samples.remove(s)
+		data.convertToRData()
 
 
 	def getEstimates(self,estimateData,groups,y,groupValues={},fixedValues=None):
@@ -257,10 +301,10 @@ class LinearModel(object):
 				sample[key] = fixedValues[key]
 
 		# Make copies of the basic timecourse for all the groups levels, including the supplied groupValues (if any)
-		for group in set(groups + groupValues.keys()):
+		for group in set(groups + list(groupValues.keys())):
 			newSamples = []
 			for sample in samples:
-				if group in groupValues.keys():
+				if group in list(groupValues.keys()):
 					for value in groupValues[group]:
 						sample[group] = value
 						newSamples.append(copy.deepcopy(sample))
@@ -290,6 +334,89 @@ class LinearModel(object):
 		return estimateDataT
 
 
+	def getIndividualEstimates(self,estimateData=None,fixedTerms={},addResiduals=False,primaryKeys=None,allData=False,y=None,**args):
+		""" Construct individual estimates.  
+			- If you do not supply estimateData the model's data will be used.  
+			- Values in the fixedTerms dictionary will be substituted into the data so that you can hold some values constant.
+			- set addResiduals to True if you want to add in the calculated residuals.  This is handy if you want to graph
+			the data "corrected" for various effects.
+			- primary keys are the set of properties that should be checked to uniquely identify a sample.  These can be set if
+			you're using addResiduals.  Unless you know better, use all the items the fixed effects depend upon.
+			If you don't set this, the effects from the model will be used.  This should work in general.
+			- alternately, if you're using all the samples from the data in this model, set allData = True and the indices of your
+			samples will be assumed to correspond to the indices of the source data.
+			- You can specify y, but I'm not sure what this would do.  It's automatically determined from the model if
+			unspecified.
+
+			The return is a ModelData object that can be graphed with ModelPlotter.
+		"""
+
+		r = self.R;
+
+		terms = self.terms
+		atomicTerms = self.atomicTerms
+		y = self.y.replace('.','-')
+		formula = self.formula
+
+		modelData = copy.deepcopy(self.data); self.removeBadSamples(modelData)
+		estimateData = copy.deepcopy(estimateData) if (not estimateData is None and not allData)  else modelData
+		self.removeBadSamples(estimateData)		
+
+		estimateDataT = copy.deepcopy(estimateData)	
+
+		# Override any set fixed effects
+		for s,sample in enumerate(estimateDataT.samples):
+			for term in fixedTerms.keys():
+				if not term in atomicTerms:
+					print("The model doesn't have key %s.  Spelling mistake?" % term)
+				sample[term] = fixedTerms[term]
+		estimateDataT.convertToRData()
+		rdata = estimateDataT.getRData()
+
+		# calculation of fixed effects (from model.getEstimates)
+#		if self.debug:
+#			import code; code.interact(local=dict(globals(), **locals()))
+
+		# try:						# This code uses R's model.matrix.  Unfortunately it doesn't work without all contrast levels represented
+		# 	X = r['model.matrix'](formula,data=rdata)
+		# except:
+		# 	# R's model.matrix is being stupid.  Use ours instead
+		# 	print "Ignore the preceeding error.  R is being stupid.  We'll do it ourselves."
+
+		X = self.makeModelMatrix(estimateDataT)
+		B = r.coef(self.model); Bnames = list(B.names); B2 = [b for b in list(B) if not isnan(b)];
+		Y = numpy.dot(numpy.array(X),numpy.array(B2))
+		
+		primaryKeys = primaryKeys if primaryKeys is not None else list(atomicTerms)
+		residuals = numpy.array(r.resid(self.model))
+		for s,sample in enumerate(estimateDataT.samples):
+			if addResiduals:
+				if allData:
+					Y[s] += residuals[s]
+				else:
+					Y[s] += residuals[modelData.getSampleIndex(estimateData.samples[s],primaryKeys)]		# Important that this looks up the unmodified samples
+
+			sample[y] = Y[s]
+			estimateDataT.samples[s] = sample
+
+		estimateDataT.convertToRData()
+		return estimateDataT
+
+
+
+	def makeModelMatrix(self,data=None):
+		data = data if data is not None else self.data
+		Xt = numpy.zeros((len(data.samples),len(list(self.coefficients.index))),numpy.float64)
+		for s,sample in enumerate(data.samples):
+			for i,term in enumerate(list(self.coefficients.index)):
+				value = self.getTermValue(sample,term)
+				if value is None:
+					print("Could not find a value for %s" % term)
+
+				Xt[s,i] = value
+		return Xt
+
+
 	def getResiduals(self):
 		summary = self.R.summary(self.model)
 		return numpy.array(self.R['residuals'](summary))
@@ -300,7 +427,22 @@ class LinearModel(object):
 		return numpy.abs(residuals) / numpy.std(numpy.abs(residuals))
 
 
-	def printSummary(self):
+	def getTermValue(self,sample,term):
+		value = None
+		if term == '(Intercept)':
+			value = 1
+		elif term in sample.keys():		# continuous variables
+			value = sample[term]
+		elif term.find(':')>0:			# Interaction
+			value = numpy.prod([self.getTermValue(sample,t) for t in term.split(':')])
+		else:			# Dummy coded categorical variables
+			for t in sample.keys():
+				if term.startswith(t):
+					value = int(sample[t] == term.replace(t,''))
+		return value
+
+
+	def summaryText(self):
 		if self.title:
 			print(bcolors.GREEN + '---------------------------------------------------' + bcolors.END)
 			print(bcolors.GREEN + '%s' % self.title + bcolors.END)
@@ -319,7 +461,7 @@ class LinearModel(object):
 				print(bcolors.RED + '%f' % pvalue + bcolors.END)
 		except:
 			pass
-		print('AIC: %f' % (self.R.AIC(self.model)[0]))
+		print('AIC: %f' % self.AIC)
 		print()
 
 		# coefficients
@@ -328,15 +470,19 @@ class LinearModel(object):
 		space = 15
 		print("Coefficients:")
 		s = ''
-		s += '%*s' % (space0,'') +''.join(['%*s' % (space,i) for i in self.summary['coefficients'].values()[0].keys()])
+		s += '%*s' % (space0,'') +''.join(['%*s' % (space,i) for i in list(self.summary['coefficients'].values())[0].keys()])
 		s += '\n'
 		for r,row in enumerate(self.summary['coefficients'].keys()):
-			if coef[row].values()[-1] < 0.05:
+			if list(coef[row].values())[-1] < 0.05:
 				s += bcolors.BLUE
-			s += '%*s' % (space0,self.summary['coefficients'].keys()[r])
+			s += '%*s' % (space0,list(self.summary['coefficients'].keys())[r])
 			s += ''.join(["%*s" % (space,formatFloat(i,space-2)) for i in coef[row].values()])
 			s += bcolors.END + '\n'
-		print(s)
+		return s
+
+
+	def printSummary(self):
+		print(self.summaryText)
 		print()
 		
 		
@@ -428,7 +574,7 @@ class GeneralizedLinearModel(LinearModel):
 		space = 15
 		print("Coefficients:")
 		s = ''
-		s += '%*s' % (space0,'') +''.join(['%*s' % (space,i) for i in coef[coef.keys()[0]].keys()])
+		s += '%*s' % (space0,'') +''.join(['%*s' % (space,i) for i in coef[list(coef.keys())[0]].keys()])
 		s += '\n'
 		for row in coef.keys():
 			if coef[row].get('Pr(>|z|)',coef[row].get('Pr(>|z|)',None)) < 0.05:
