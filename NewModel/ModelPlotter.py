@@ -3,9 +3,11 @@ from __future__ import print_function
 try:
 	from .ModelData import *
 	from .Loess import Loess
+	from .NewModel import MixedModel
 except:
 	from ModelData import *
 	from Loess import Loess
+	from NewModel import MixedModel
 		
 	
 import pylab
@@ -335,7 +337,10 @@ class ModelPlotter(object):
 			if (~combinedMask).any():
 				self.groupedData[group]['x'] += i[self.x]
 				self.groupedData[group]['y'] += i[self.y]
-				self.groupedData[group]['N'] += 1
+				if isinstance(self.model,MixedModel):
+					self.groupedData[group]['N'] += 1
+				else:
+					self.groupedData[group]['N'] = len(i[self.y])
 				if self.weights:
 					self.groupedData[group]['weights'] += i[self.weights]
 		self.individualLines = pylab.gca().lines

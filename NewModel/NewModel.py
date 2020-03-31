@@ -451,10 +451,10 @@ class LinearModel(object):
 		summary = self.R.summary(self.model)
 		# fit summary
 		try:
-			pvalue = 1-self.R.pf(self.summary['fstatistic'][0],self.summary['fstatistic'][1],self.summary['fstatistic'][2])[0]
-			print("Residual standard error: %f on %d degrees of freedom" % (self.summary['sigma'][0],self.summary['df'][1]))
-			print("Multiple R-squared: %f, Adjusted R-squared: %f" % (self.summary['r.squared'][0],self.summary['adj.r.squared'][0]))
-			print('F-statistic: %f on %d and %d DF, p = ' % (self.summary['fstatistic'][0],self.summary['fstatistic'][1],self.summary['fstatistic'][2]),end='')
+			pvalue = 1-self.R.pf(self.summary['fstatistic']['value'],self.summary['fstatistic']['numdf'],self.summary['fstatistic']['dendf'])[0]
+			print("Residual standard error: %f on %d degrees of freedom" % (self.summary['sigma'],self.summary['df'][1]))
+			print("Multiple R-squared: %f, Adjusted R-squared: %f" % (self.summary['r.squared'],self.summary['adj.r.squared']))
+			print('F-statistic: %f on %d and %d DF, p = ' % (self.summary['fstatistic']['value'],self.summary['fstatistic']['numdf'],self.summary['fstatistic']['dendf']),end='')
 			if pvalue < 0.05:
 				print(bcolors.BLUE + '%f' % pvalue + bcolors.END)
 			else:
