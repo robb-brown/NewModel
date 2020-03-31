@@ -1426,13 +1426,13 @@ class NegativeBinomialMixedModel(GeneralizedMixedModel):
 		if weights:
 			model = lme.glmer_nb(data=self.data.getRData(),formula=self.modelSpec,weights=weights,REML=REML,model=True,x=True)
 		else:
-			model = lme.glmer_nb(self.modelSpec,family=self.family,REML=REML,model=True,x=True)
+			model = lme.glmer_nb(data=self.data.getRData(),formula=self.modelSpec,REML=REML,model=True,x=True)
 
 		if nullModelSpec is not None:
 			if weights:
-				nullModel = lme.lmer(nullModelSpec,REML=REML,weights=weights,model=True,x=True)
+				nullModel = lme.lmer(data=self.data.getRData(),formula=nullModelSpec,REML=REML,weights=weights,model=True,x=True)
 			else:
-				nullModel = lme.lmer(nullModelSpec,REML=REML,model=True,x=True)
+				nullModel = lme.lmer(data=self.data.getRData(),formula=nullModelSpec,REML=REML,model=True,x=True)
 		else:
 			nullModel = None
 
