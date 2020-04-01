@@ -3,9 +3,11 @@ from __future__ import print_function
 try:
 	from .ModelData import *
 	from .Loess import Loess
+	from .NewModel import MixedModel
 except:
 	from ModelData import *
 	from Loess import Loess
+	from NewModel import MixedModel
 		
 	
 import pylab
@@ -141,6 +143,8 @@ class ModelPlotter(object):
 
 	def getTimecourses(self,data,**kwargs):
 		x = kwargs.get('x',self.x); y = kwargs.get('y',self.y)
+		x = x if x in data.samples[0] else x.replace('.','-')
+		y = y if y in data.samples[0] else y.replace('.','-')
 		groups = kwargs.get('groups',self.groups); silentGroups = kwargs.get('silentGroups',self.silentGroups)
 		individuals = kwargs.get('individuals',self.individuals)
 		overKey=[x]; accKey=[x,y];
@@ -287,15 +291,14 @@ class ModelPlotter(object):
 		
 		
 	def plotData(self,prepareOnly=False,correctFixed={},correctRandom={},addResiduals=True,**kwargs):
-#		if self.model is not None and not kwargs.has_key('data') and not (correctFixed == {} and correctRandom == {} and addResiduals):			# If we were supplied data, use that
 		if self.model is not None and not 'data' in kwargs:			# If we were supplied data, use that
 			self.data = self.model.getIndividualEstimates(fixedTerms=correctFixed, excludeRandomEffects=correctRandom,addResiduals=addResiduals, allData=True)
-			
+		
 		s,self.sampleIndex = self.getTimecourses(self.data,**kwargs)
 		self.timecourses = s
 		self.groupedData = {}
 		if self.ialpha == None:
-			ialpha = 1. / len(s) * 4.5
+			ialpha = min(1.,1. / len(s) * 4.5)
 		else:
 			ialpha = self.ialpha
 		for i in s:
@@ -334,7 +337,10 @@ class ModelPlotter(object):
 			if (~combinedMask).any():
 				self.groupedData[group]['x'] += i[self.x]
 				self.groupedData[group]['y'] += i[self.y]
-				self.groupedData[group]['N'] += 1
+				if isinstance(self.model,MixedModel):
+					self.groupedData[group]['N'] += 1
+				else:
+					self.groupedData[group]['N'] = len(i[self.y])
 				if self.weights:
 					self.groupedData[group]['weights'] += i[self.weights]
 		self.individualLines = pylab.gca().lines
@@ -365,7 +371,7 @@ class ModelPlotter(object):
 				setattr(self,k,kwargs.pop(k))
 		if 'figure' in kwargs:
 			figure(figure)
-					
+		
 		# Plot the individuals
 		self.plotData(**kwargs)
 
@@ -388,9 +394,13 @@ class ModelPlotter(object):
 						self.estimateData.calculateDerivedValues(self.derivedValues)
 
 					self.estimates = self.model.getEstimates(self.estimateData,self.groups,self.y,self.groupValues,self.fixedValues)
+					y = [sample[self.y] for sample in self.estimates.samples]
+					if numpy.any(numpy.isnan(y)):
+						print("There are nans in plotter's estimate data. Probably you forgot to specify a group or group value")
 					if not self.estimates is None:
 						self.estimatedTimecourses,_ = self.getTimecourses(self.estimates,**kwargs)
 					else:
+						print('Plotter could not create estimates. Did you forget to specify something?')
 						return
 				if prepareOnly:
 					return
