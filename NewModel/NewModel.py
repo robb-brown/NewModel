@@ -823,7 +823,7 @@ class MixedModel(LinearModel):
 					for effectName in u[groupName].index:
 						if effectName in exclude:
 							continue
-					
+
 						individual = individuals.index(sample[groupName])
 						effectValue = 1 if effectName == '(Intercept)' else sample[effectName]
 						adjustment = effectValue * u[groupName][effectName][individual]
