@@ -4,7 +4,7 @@ import rpy2
 import rpy2.robjects as robjects
 import rpy2.rinterface as rinterface
 from rpy2.robjects.packages import importr
-from rpy2.robjects import r, pandas2ri; pandas2ri.activate()
+from rpy2.robjects import r, pandas2ri;
 import copy
 import traceback
 from time import time
