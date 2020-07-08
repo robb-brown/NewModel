@@ -4,6 +4,7 @@ import rpy2
 import rpy2.robjects as robjects
 import rpy2.rinterface as rinterface
 from rpy2.robjects.packages import importr
+from rpy2.robjects import r, pandas2ri; pandas2ri.activate()
 import copy
 import traceback
 from time import time
@@ -177,10 +178,10 @@ def formatTable(table,pCol=None,**args):
 
 class LinearModel(object):
 
-	def __init__(self,data=None,modelSpec=None,weights=None,title=None,quiet=False):
+	def __init__(self,data=None,modelSpec=None,nullModelSpec=None,weights=None,title=None,quiet=False):
 		self.data = None
 		self.modelSpec = None
-		self.specifyModel(modelSpec)
+		self.specifyModel(modelSpec,nullModelSpec)
 		self.model = None
 		self.summary = None
 		self.R = robjects.r
@@ -208,14 +209,17 @@ class LinearModel(object):
 	def setData(self,data):
 		self.model = None
 		self.data = copy.deepcopy(data)
-		if self.data and self.modelSpec:
+		if not self.data is None and not self.modelSpec is None:
 			self.execute()
 
 
-	def specifyModel(self,model):
+	def specifyModel(self,model,nullModel=None):
 		self.model = None
 		self.modelSpec = model
-		self.makeNullModelSpec()
+		if nullModel is None:
+			self.makeNullModelSpec()
+		else:
+			self.nullModelSpec = nullModel
 		if self.data and self.modelSpec:
 			self.execute()
 
@@ -229,9 +233,9 @@ class LinearModel(object):
 
 
 	def execute(self):
-		robjects.globalenv["data"] = self.data.getRData()
+		rdata = pandas2ri.py2ri(self.data) if isinstance(self.data,pandas.DataFrame) else self.data.getRData()
+		robjects.globalenv["data"] = rdata
 		if self.weights:
-			rdata = self.data.getRData()
 			weights = rdata[rdata.names.index(self.weights)]
 		else:
 			weights = None
@@ -487,15 +491,28 @@ class LinearModel(object):
 		
 		
 	def testContrast(self,contrast={},printResult=True):
-		mcomp = importr("multcomp")
 		c1 = [contrast.get(k,0.) for k in self.summary['coefficients'].keys()]
-		mc = mcomp.glht(self.model,self.R.matrix(robjects.FloatVector(numpy.array([c1]).ravel()),nrow=1,byrow=True))
-		s = self.R.summary(mc)
-		estimate = numpy.array(s[-1][2])
-		sigma = numpy.array(s[-1][3])
-		t = numpy.array(s[-1][4])
-		p = numpy.array(s[-1][5])
+		# Multcomp method
+		# Fails with some more creative model specifications. Also requires multcomp
+		# mcomp = importr("multcomp")
+		# mc = mcomp.glht(self.model,self.R.matrix(robjects.FloatVector(numpy.array([c1]).ravel()),nrow=1,byrow=True))
+		# s = rToDict(self.R.summary(mc))
+		# estimate = s['test']['coefficients']['1']
+		# sigma = s['test']['sigma']['1']
+		# t = s['test']['tstat']['1']
+		# p = s['test']['pvalues']
 
+		# Low level method. Better
+		β = self.coefficients.Estimate
+		V = pandas.DataFrame(rToDict(self.R.vcov(self.model)))
+		L = ((β*0+1)*pandas.DataFrame([contrast])).fillna(0.0)
+		estimate = L.dot(β).values
+		sigma = numpy.diag(numpy.sqrt(L.dot(V.dot(L.transpose())).values))
+		t = estimate / sigma
+		df = self.summary['df'][1]
+		p = (1-scipy.stats.t.cdf(abs(t),df=df))*2
+		result = pandas.DataFrame(dict(estimate=estimate,sigma=sigma,t=t,p=p))
+		
 		if printResult:
 			s = 'Test of hypothesis:  '
 			s2 = ''.join([u' %+d\u22C5%s' % (c1[k],name) for k,name in enumerate(self.summary['coefficients'].keys()) if not c1[k] == 0])[1:].replace('-','- ').replace('+','+ ').replace(u'1\u22C5',u'')
@@ -503,12 +520,12 @@ class LinearModel(object):
 				s2 = s2[2:]
 			s += s2 + ' == 0'
 			print(s)
-			print(formatTable({'':dict(Estimate=estimate,Sigma=sigma,t=t,p=p)},rownames=[''],colnames=['Estimate','Sigma','t','p'],colSpace=10))
-
+			print(result)
+			
 		if len(p) > 0:
 			return dict(estimate=estimate,sigma=sigma,t=t,p=p)
 		else:
-			return dict(estimate=estimate[0],sigma=sigma[0],t=t[0],p=p[0])
+			return result
 		
 		
 		
@@ -674,7 +691,7 @@ class MixedModel(LinearModel):
 		self.REML = REML
 		self.mcmc = mcmc
 		self.LRResults = None
-		super(MixedModel,self).__init__(data,modelSpec,weights,title,quiet)
+		super(MixedModel,self).__init__(data,modelSpec=modelSpec,nullModelSpec=nullModelSpec,weights=weights,title=title,quiet=quiet)
 #		if self.data and self.modelSpec:
 #			self.execute()
 
@@ -803,7 +820,7 @@ class MixedModel(LinearModel):
 		self.nullSummary = None
 		self.modelComparison = None
 		self.LRResults = None
-		rdata = self.data.getRData()
+		rdata = pandas2ri.py2ri(self.data) if isinstance(self.data,pandas.DataFrame) else self.data.getRData()
 		if self.weights:
 			weights = rdata[rdata.names.index(self.weights)]
 			weights = numpy.array(weights)
