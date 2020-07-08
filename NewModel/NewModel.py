@@ -488,8 +488,15 @@ class LinearModel(object):
 		
 	def testContrast(self,contrast={},printResult=True):
 		mcomp = importr("multcomp")
-		c1 = [contrast.get(k,0.) for k in self.summary['coefficients'].keys()]
-		mc = mcomp.glht(self.model,self.R.matrix(robjects.FloatVector(numpy.array([c1]).ravel()),nrow=1,byrow=True))
+		# We need to get the coefficients from the model itself, not the summary 
+		# (as self.summary['coefficients'] is because summary can omit some degenerate
+		# coefficients that are nevertheless included in the model
+		# Problem... R.coef(self.model) will report degenerate coefficients but
+		# R.vcov(self.model) does *not*. This means that mcomp will not work at all in these
+		# cases. :(
+		coefficients = rToDict(self.R.coef(self.model))
+		c1 = [contrast.get(k,0.) for k in coefficients.keys()]
+		mc = mcomp.glht(self.model,self.R.matrix(robjects.FloatVector(numpy.array(c1).ravel()),nrow=1,byrow=True))
 		s = self.R.summary(mc)
 		estimate = numpy.array(s[-1][2])
 		sigma = numpy.array(s[-1][3])
