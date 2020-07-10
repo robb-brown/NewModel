@@ -4,7 +4,7 @@ import rpy2
 import rpy2.robjects as robjects
 import rpy2.rinterface as rinterface
 from rpy2.robjects.packages import importr
-from rpy2.robjects import r, pandas2ri;
+from rpy2.robjects import r, pandas2ri; pandas2ri.activate()
 import copy
 import traceback
 from time import time
@@ -29,6 +29,7 @@ class bcolors:
 	YELLOW = '\033[93m'
 	RED = '\033[91m'
 	END = '\033[0m'
+
 
 
 
@@ -110,17 +111,7 @@ def rToDict(data):
 		print('Exception converting R datatype. Thought it was a {}'.format(kind))
 		traceback.print_exc()
 		return data
-
-
-def pandasDF2R(df):
-	with robjects.conversion.localconverter(rpy2.robjects.default_converter + pandas2ri.converter):
-		if hasattr(robjects.conversion,'py2ri'):
-			ret = robjects.conversion.py2ri(df)
-		else:
-			ret = robjects.conversion.py2rpy(df)		
-	return ret
-
-
+			
 			
 def sortkeypicker(keynames):
 	def getit(adict):
@@ -242,7 +233,7 @@ class LinearModel(object):
 
 
 	def execute(self):
-		rdata = pandasDF2R(self.data) if isinstance(self.data,pandas.DataFrame) else self.data.getRData()
+		rdata = pandas2ri.py2ri(self.data) if isinstance(self.data,pandas.DataFrame) else self.data.getRData()
 		robjects.globalenv["data"] = rdata
 		if self.weights:
 			weights = rdata[rdata.names.index(self.weights)]
@@ -500,6 +491,24 @@ class LinearModel(object):
 		
 		
 	def testContrast(self,contrast={},printResult=True):
+<<<<<<< HEAD
+		mcomp = importr("multcomp")
+		# We need to get the coefficients from the model itself, not the summary 
+		# (as self.summary['coefficients'] is because summary can omit some degenerate
+		# coefficients that are nevertheless included in the model
+		# Problem... R.coef(self.model) will report degenerate coefficients but
+		# R.vcov(self.model) does *not*. This means that mcomp will not work at all in these
+		# cases. :(
+		coefficients = rToDict(self.R.coef(self.model))
+		c1 = [contrast.get(k,0.) for k in coefficients.keys()]
+		mc = mcomp.glht(self.model,self.R.matrix(robjects.FloatVector(numpy.array(c1).ravel()),nrow=1,byrow=True))
+		s = self.R.summary(mc)
+		estimate = numpy.array(s[-1][2])
+		sigma = numpy.array(s[-1][3])
+		t = numpy.array(s[-1][4])
+		p = numpy.array(s[-1][5])
+
+=======
 		c1 = [contrast.get(k,0.) for k in self.summary['coefficients'].keys()]
 		# Multcomp method
 		# Fails with some more creative model specifications. Also requires multcomp
@@ -522,6 +531,7 @@ class LinearModel(object):
 		p = (1-scipy.stats.t.cdf(abs(t),df=df))*2
 		result = pandas.DataFrame(dict(estimate=estimate,sigma=sigma,t=t,p=p))
 		
+>>>>>>> eebf4ea29d78e7c62211eb858f30e63820deab4e
 		if printResult:
 			s = 'Test of hypothesis:  '
 			s2 = ''.join([u' %+d\u22C5%s' % (c1[k],name) for k,name in enumerate(self.summary['coefficients'].keys()) if not c1[k] == 0])[1:].replace('-','- ').replace('+','+ ').replace(u'1\u22C5',u'')
@@ -707,11 +717,11 @@ class MixedModel(LinearModel):
 
 	def setData(self,data):
 		self.data = copy.deepcopy(data)
-		if not self.data is None and not self.modelSpec is None:
+		if self.data and self.modelSpec:
 			try:
 				self.execute()
 			except:
-				traceback.print_exc()
+				pass
 
 
 	def makeNullModelSpec(self):
@@ -829,10 +839,10 @@ class MixedModel(LinearModel):
 		self.nullSummary = None
 		self.modelComparison = None
 		self.LRResults = None
-		rdata = pandasDF2R(self.data) if isinstance(self.data,pandas.DataFrame) else self.data.getRData()
+		rdata = pandas2ri.py2ri(self.data) if isinstance(self.data,pandas.DataFrame) else self.data.getRData()
 		if self.weights:
 			weights = rdata[rdata.names.index(self.weights)]
-			weights = numpy.array(weights).astype(numpy.float32)
+			weights = numpy.array(weights)
 			weights /= numpy.average(weights)
 			weights = robjects.FloatVector(weights)
 		else:
