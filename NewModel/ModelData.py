@@ -701,7 +701,13 @@ class ModelData(object):
 				newK = str(k)
 			data[newK] = [i.get(k,None) for i in self.samples]
 		self.convertColumnsToRData(data)
-		self.RData = self.R['data.frame'](**data)
+		
+		# new Rpy2
+		for col in data.keys():
+			if isinstance(data[col],rpy2.robjects.vectors.StrVector):
+				data[col] = self.R.factor(data[col])
+		
+		self.RData = self.R['data.frame'](**data)		
 		for factor in self.references:
 			try:
 				i = self.RData.colnames.index(factor)

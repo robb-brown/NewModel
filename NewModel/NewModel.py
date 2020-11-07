@@ -34,8 +34,10 @@ class bcolors:
 
 
 # New LME
-p = pth.join(pth.dirname(__file__),'Rlibs','new')
-lme = importr("lme4",lib_loc='"%s"' % p,suppress_messages=True)
+# for importing packages saved in specific locations
+# p = pth.join(pth.dirname(__file__),'Rlibs','new')
+# lme = importr("lme4",lib_loc='"%s"' % p,suppress_messages=True)
+lme = importr('lme4')
 lmerTest = importr('lmerTest')
 mass = importr("MASS")
 
@@ -235,9 +237,9 @@ class LinearModel(object):
 
 	def fitModel(self,modelSpec,weights=None):
 		if (weights):
-			model = self.R.lm(modelSpec,weights=weights,model=True,x=True,y=True,qr=True)
+			model = self.R.lm(modelSpec,weights=weights,y=True,qr=True)
 		else:
-			model = self.R.lm(modelSpec,model=True,x=True,y=True,qr=True)
+			model = self.R.lm(modelSpec,y=True,qr=True)
 		return model
 
 
@@ -461,6 +463,7 @@ class LinearModel(object):
 			print(bcolors.GREEN + '%s' % self.title + bcolors.END)
 			print(bcolors.GREEN + '---------------------------------------------------\n' + bcolors.END)
 
+		print('Formula: ' + self.modelSpec)
 		summary = self.R.summary(self.model)
 		# fit summary
 		try:
@@ -557,9 +560,9 @@ class GeneralizedLinearModel(LinearModel):
 
 	def fitModel(self,modelSpec,weights=None):
 		if (weights):
-			model = self.R.glm(modelSpec,weights=weights,family=self.family,model=True,x=True,y=True)
+			model = self.R.glm(modelSpec,weights=weights,family=self.family,y=True)
 		else:
-			model = self.R.glm(modelSpec,model=True,family=self.family,x=True,y=True)
+			model = self.R.glm(modelSpec,family=self.family,y=True)
 		return model
 
 
@@ -570,7 +573,8 @@ class GeneralizedLinearModel(LinearModel):
 			print(bcolors.GREEN + '%s' % self.title + bcolors.END)
 			print(bcolors.GREEN + '---------------------------------------------------\n' + bcolors.END)
 		print("Generalized %s Linear Model with %s Link" % (summary['family']['family'].title(),summary['family']['link'].title()))
-
+		print('Formula: ' + self.modelSpec)
+		
 		# fit summary
 		try:
 			if 'dispersion' in summary:
@@ -627,17 +631,17 @@ class NegativeBinomialModel(LinearModel):
 #			self.R('attach(data)')
 			t1 = time()
 			if (weights):
-				self.model = mass.glm_nb(data=rdata,formula=self.modelSpec,weights=weights,model=True,x=True,y=True)
+				self.model = mass.glm_nb(data=rdata,formula=self.modelSpec,weights=weights,y=True)
 			else:
-				self.model = mass.glm_nb(data=rdata,formula=self.modelSpec,model=True,x=True,y=True)
+				self.model = mass.glm_nb(data=rdata,formula=self.modelSpec,y=True)
 			t2 = time()
 			self.timings['MainModelFit'] = t2-t1
 
 			# NULL model
 			if weights:
-				self.nullModel = mass.glm_nb(data=rdata,formula=self.nullModelSpec,weights=weights,model=True,x=True,y=True)
+				self.nullModel = mass.glm_nb(data=rdata,formula=self.nullModelSpec,weights=weights,y=True)
 			else:
-				self.nullModel = mass.glm_nb(data=rdata,formula=self.nullModelSpec,model=True,x=True,y=True)
+				self.nullModel = mass.glm_nb(data=rdata,formula=self.nullModelSpec,y=True)
 			robjects.globalenv['model'] = self.model
 			robjects.globalenv['nullModel'] = self.nullModel
 			self.modelComparison = self.R('anova(model,nullModel)')
@@ -1257,7 +1261,7 @@ class MixedModel(LinearModel):
 		print(); print()
 		if self.modelComparison:
 			print("Comparing to the Null Model (evaluating the fit of the fixed effects):")
-			print("	Chi Sq: {chisq}; Chi df: {df}; ".format(chisq=self.modelComparison['Chisq'][-1],df=self.modelComparison['Chi Df'][-1]),end='')
+			print("	Chi Sq: {chisq}; Chi df: {df}; ".format(chisq=self.modelComparison['Chisq'][-1],df=self.modelComparison.get('Df',self.modelComparison.get('Chi Df'))[-1]),end='')
 			p = self.modelComparison['Pr(>Chisq)'][-1]
 			if p < 0.05:
 				modelSignificant = True	
@@ -1418,15 +1422,15 @@ class GeneralizedMixedModel(MixedModel):
 
 	def fitModel(self,modelSpec,nullModelSpec=None,weights=None,REML=True,**args):
 		if weights:
-			model = lme.glmer(self.modelSpec,family=self.family,weights=weights,REML=REML,model=True,x=True)
+			model = lme.glmer(self.modelSpec,family=self.family,weights=weights,REML=REML)
 		else:
-			model = lme.glmer(self.modelSpec,family=self.family,REML=REML,model=True,x=True)
+			model = lme.glmer(self.modelSpec,family=self.family,REML=REML)
 
 		if nullModelSpec is not None:
 			if weights:
-				nullModel = lme.lmer(nullModelSpec,REML=REML,weights=weights,model=True,x=True)
+				nullModel = lme.lmer(nullModelSpec,REML=REML,weights=weights)
 			else:
-				nullModel = lme.lmer(nullModelSpec,REML=REML,model=True,x=True)
+				nullModel = lme.lmer(nullModelSpec,REML=REML)
 		else:
 			nullModel = None
 
@@ -1450,15 +1454,15 @@ class NegativeBinomialMixedModel(GeneralizedMixedModel):
 
 	def fitModel(self,modelSpec,nullModelSpec=None,weights=None,REML=True,**args):
 		if weights:
-			model = lme.glmer_nb(data=self.data.getRData(),formula=self.modelSpec,weights=weights,REML=REML,model=True,x=True)
+			model = lme.glmer_nb(data=self.data.getRData(),formula=self.modelSpec,weights=weights,REML=REML)
 		else:
-			model = lme.glmer_nb(data=self.data.getRData(),formula=self.modelSpec,REML=REML,model=True,x=True)
+			model = lme.glmer_nb(data=self.data.getRData(),formula=self.modelSpec,REML=REML)
 
 		if nullModelSpec is not None:
 			if weights:
-				nullModel = lme.lmer(data=self.data.getRData(),formula=nullModelSpec,REML=REML,weights=weights,model=True,x=True)
+				nullModel = lme.lmer(data=self.data.getRData(),formula=nullModelSpec,REML=REML,weights=weights)
 			else:
-				nullModel = lme.lmer(data=self.data.getRData(),formula=nullModelSpec,REML=REML,model=True,x=True)
+				nullModel = lme.lmer(data=self.data.getRData(),formula=nullModelSpec,REML=REML)
 		else:
 			nullModel = None
 
@@ -1483,7 +1487,7 @@ if __name__ == '__main__':
 	# 
 	# robjects.globalenv["data"] = data.getRData(mustHave=['x'])
 	# R('attach(data)')
-	# model = lmerTest.lmer('y ~ x + (1|sub)',model=True,x=True)
+	# model = lmerTest.lmer('y ~ x + (1|sub)')
 	# summary = R.summary(model)
 	# randSummary = lmerTest.rand(model)
 

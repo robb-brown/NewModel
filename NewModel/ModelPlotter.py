@@ -188,39 +188,44 @@ class ModelPlotter(object):
 		color = self.colors[0]
 
 		newSample = self.getGroupedSample(sample)
-		
-		for g,group in enumerate(self.groups):
+		groupDescription = self.makeGroupDescriptor(newSample)
+		if groupDescription in self.groupFormatKey:
+			color = self.groupFormatKey[groupDescription]['color']
+			style = self.groupFormatKey[groupDescription]['style']
+		else:
+			for g,group in enumerate(self.groups[0:2]):			
+				samplevalue = newSample[group]
+				if g == 0:			# first group chooses colour
+					color = self.groupColorKey.get(samplevalue,None)
+					style = self.groupStyleKey.get(samplevalue,self.linestyle)
+					if not color:
+						self.colorCounter = (self.colorCounter + 1) % len(self.colors)
+						color = self.colors[self.colorCounter]
+						if color.__class__ == dict:
+							self.groupStyleKey[samplevalue] = color.get('style',self.linestyle); style = self.groupStyleKey[samplevalue]
+							self.groupColorKey[samplevalue] = color['color']; color = color['color']
+						else:
+							self.groupColorKey[samplevalue] = self.colors[self.colorCounter]
+							color = self.groupColorKey[samplevalue]
+				if g == 1:
+					style = self.groupStyleKey.get(samplevalue,None)
+					if style is None:		# Try composite group
+						try:
+							style = self.groupStyleKey.get('-'.join(self.groups[1:])).get('-'.join(groupDescription.split('-')[1:]))						
+						except:
+							pass
+					if style is None:		# give up and make a new one
+						self.styleCounter = (self.styleCounter + 1) % len(self.styles)
+						style = self.styles[self.styleCounter]
+						if style.__class__ == dict:
+							self.groupColorKey[samplevalue] = style.get('color',self.colors[0]); self.groupColorKey[samplevalue]
+							self.groupStyleKey[samplevalue] = style['style']; style = style['style']
+						else:
+							self.groupStyleKey[samplevalue] = self.styles[self.styleCounter]
+							style = self.groupStyleKey.get(samplevalue,None)
 			
-			samplevalue = newSample[group]
-		
-			if g == 0:
-				color = self.groupColorKey.get(samplevalue,None)
-				style = self.groupStyleKey.get(samplevalue,self.linestyle)
-				if not color:
-					self.colorCounter = (self.colorCounter + 1) % len(self.colors)
-					color = self.colors[self.colorCounter]
-					if color.__class__ == dict:
-						self.groupStyleKey[samplevalue] = color.get('style',self.linestyle); style = self.groupStyleKey[samplevalue]
-						self.groupColorKey[samplevalue] = color['color']; color = color['color']
-					else:
-						self.groupColorKey[samplevalue] = self.colors[self.colorCounter]
-						color = self.groupColorKey[samplevalue]
-			if g == 1:
-				style = self.groupStyleKey.get(samplevalue,None)
-#				color = self.groupColorKey.get(samplevalue,self.colors[0])
-				if not style:
-					self.styleCounter = (self.styleCounter + 1) % len(self.styles)
-					style = self.styles[self.styleCounter]
-					if style.__class__ == dict:
-						self.groupColorKey[samplevalue] = style.get('color',self.colors[0]); self.groupColorKey[samplevalue]
-						self.groupStyleKey[samplevalue] = style['style']; style = style['style']
-					else:
-						self.groupStyleKey[samplevalue] = self.styles[self.styleCounter]
-						style = self.groupStyleKey.get(samplevalue,None)
-			
-		group = self.makeGroupDescriptor(newSample)
-		if not group in self.groupFormatKey:
-			self.groupFormatKey[group] = {'color':color,'style':style}
+		if not groupDescription in self.groupFormatKey:
+			self.groupFormatKey[groupDescription] = {'color':color,'style':style}
 		return color,style
 		
 		
