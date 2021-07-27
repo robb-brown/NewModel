@@ -1251,6 +1251,9 @@ class MixedModel(LinearModel):
 			print(bcolors.GREEN + '---------------------------------------------------' + bcolors.END)
 			print(bcolors.GREEN + '%s' % self.title + bcolors.END)
 			print(bcolors.GREEN + '---------------------------------------------------\n' + bcolors.END)
+
+		print('Formula: ' + self.modelSpec)
+		
 		summary = self.summary
 		print(summary['methTitle']); print()
 		print("Number of samples: %d in %d total groups" % (self.totalSamples,summary['devcomp']['dims']['q']))

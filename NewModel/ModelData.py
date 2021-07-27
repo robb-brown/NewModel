@@ -108,7 +108,7 @@ class ModelData(object):
 		self.derivedValues = []
 		self.references = {}
 		self.order = order
-		if data:
+		if not data is None:
 			self.setData(data,keyName,style,extras)
 		
 		

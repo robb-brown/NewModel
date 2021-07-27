@@ -8,7 +8,7 @@ setup(	name='newmodel',
 		license='MIT',
 		packages=['NewModel'],
 		install_requires=[
-			'numpy','rpy2==2.7.7','scipy','matplotlib','seaborn',
+			'numpy','rpy2','scipy','matplotlib','seaborn',
 		],
 		zip_safe=False
 )
