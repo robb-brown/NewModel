@@ -1264,7 +1264,7 @@ class MixedModel(LinearModel):
 		print(); print()
 		if self.modelComparison:
 			print("Comparing to the Null Model (evaluating the fit of the fixed effects):")
-			print("	Chi Sq: {chisq}; Chi df: {df}; ".format(chisq=self.modelComparison['Chisq'][-1],df=self.modelComparison.get('Df',self.modelComparison.get('Chi Df'))[-1]),end='')
+			print("	Chi Sq: {chisq}; Chi df: {df}; ".format(chisq=self.modelComparison['Chisq'][-1],df=self.modelComparison.get('Df',self.modelComparison.get('Chi Df',[None]))[-1]),end='')
 			p = self.modelComparison['Pr(>Chisq)'][-1]
 			if p < 0.05:
 				modelSignificant = True	
